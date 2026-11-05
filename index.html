@@ -208,9 +208,6 @@
   .commute-opts { display: flex; gap: 8px; }
   .commute-opts .co { flex: 1; text-align: center; padding: 10px 0; border-radius: 10px; background: #F5F8F6; color: var(--text-sub); font-size: 13px; cursor: pointer; }
   .commute-opts .co.sel { background: var(--green); color: #fff; font-weight: 600; }
-  .commute-input { display: flex; align-items: center; gap: 6px; }
-  .commute-input input { width: 84px; height: 38px; border: 1px solid var(--line); border-radius: 9px; text-align: center; font-size: 15px; font-weight: 600; color: var(--green); background: #fff; outline: none; }
-  .commute-input span { font-size: 12px; color: var(--text-sub); }
   .commute-saved { margin-top: 12px; padding: 8px 12px; border-radius: 8px; background: var(--green-light); color: var(--green); font-size: 12px; }
   .commute-seg { padding: 14px 0; }
   .commute-seg + .commute-seg { border-top: 1px solid var(--line); margin-top: 4px; }
@@ -221,9 +218,6 @@
   .cg-item { flex: 1; }
   .cg-item label { display: block; font-size: 11px; color: var(--text-mute); margin-bottom: 6px; }
   .cg-item input[type=time] { width: 100%; height: 38px; border: 1px solid var(--line); border-radius: 9px; text-align: center; font-size: 14px; font-weight: 600; color: var(--green); background: #fff; outline: none; }
-  .cg-item .commute-input { gap: 4px; }
-  .cg-item .commute-input input { width: 100%; }
-  .cg-item .commute-input span { flex-shrink: 0; }
   .cg-arrow { color: var(--text-mute); font-size: 16px; padding-bottom: 10px; }
 
   .work-start { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; }
@@ -324,7 +318,7 @@
       <span class="v">2026年11月1日</span>
     </div>
 
-    <div class="btn-primary" onclick="goto('confirm')">智能规划时长</div>
+    <div class="btn-primary" onclick="startEstimate()">智能规划时长</div>
     <div class="tip" style="text-align:center;margin-top:22px">会结合作息，避开午休与固定时间</div>
   </div>
 
@@ -416,7 +410,6 @@
           <div class="cg-item"><label>出发</label><input type="time" id="toStart" value="07:00" onchange="commuteToChange()"></div>
           <div class="cg-arrow">→</div>
           <div class="cg-item"><label>到达</label><input type="time" id="toEnd" value="08:00" onchange="commuteToChange()"></div>
-          <div class="cg-item"><label>大约</label><div class="commute-input"><input type="number" id="toMin" value="60" min="0" max="300" oninput="commuteToChange()"><span>分钟</span></div></div>
         </div>
       </div>
       <div class="commute-seg">
@@ -425,7 +418,6 @@
           <div class="cg-item"><label>出发</label><input type="time" id="fromStart" value="18:00" onchange="commuteFromChange()"></div>
           <div class="cg-arrow">→</div>
           <div class="cg-item"><label>到达</label><input type="time" id="fromEnd" value="19:00" onchange="commuteFromChange()"></div>
-          <div class="cg-item"><label>大约</label><div class="commute-input"><input type="number" id="fromMin" value="60" min="0" max="300" oninput="commuteFromChange()"><span>分钟</span></div></div>
         </div>
       </div>
       <div class="commute-saved" id="commuteSaved">✓ 已记录通勤：上班 07:00-08:00 · 下班 18:00-19:00</div>
@@ -573,6 +565,46 @@
     renderFixedList();
   }
   function removeFixed(i) { manualFixed.splice(i, 1); renderFixedList(); }
+
+  /* ---------- 创建 → 确认：每次点击都按最新输入重建，绝不用旧缓存 ---------- */
+  function guessMinutes(title) {
+    var t = title || '';
+    if (/周报|月报|总结|报告|方案|文档|PPT|ppt|写作/.test(t)) return 50;
+    if (/会议|开会|沟通|评审|讨论|汇报/.test(t)) return 60;
+    if (/邮件|回复|消息|电话/.test(t)) return 20;
+    if (/学习|阅读|看书|课程|培训/.test(t)) return 45;
+    if (/整理|数据|收拾/.test(t)) return 45;
+    if (/运动|健身|跑步/.test(t)) return 40;
+    return 45;
+  }
+  function parseRangeLine(line) {
+    var m = String(line).match(/(\d{1,2})[:：](\d{2})\s*[-~—–至到]\s*(\d{1,2})[:：](\d{2})/);
+    if (!m) return null;
+    var h1 = Number(m[1]), h2 = Number(m[3]);
+    if (/下午|晚上|傍晚/.test(line)) { if (h1 < 12) h1 += 12; if (h2 < 12) h2 += 12; }
+    var s = pad0(h1) + ':' + m[2], e = pad0(h2) + ':' + m[4];
+    if (s >= e) return null;
+    return { startTime: s, endTime: e };
+  }
+  function startEstimate() {
+    var raw = document.getElementById('taskInput').value;
+    var lines = raw.split('\n').map(function (l) { return l.trim(); }).filter(Boolean);
+    if (!lines.length && !manualFixed.length) { showToast('先写下今天要做的事', ''); return; }
+    // 强制清空旧数据，按当前最新输入 + 固定任务重建
+    estimateData = [];
+    lines.forEach(function (line) {
+      var range = parseRangeLine(line);
+      if (range) {
+        estimateData.push({ title: line, minutes: t2m(range.endTime) - t2m(range.startTime), startTime: range.startTime, endTime: range.endTime, isFixed: true, approved: true });
+      } else {
+        estimateData.push({ title: line, minutes: guessMinutes(line), approved: false });
+      }
+    });
+    manualFixed.forEach(function (f) {
+      estimateData.push({ title: f.title, minutes: t2m(f.end) - t2m(f.start), startTime: f.start, endTime: f.end, isFixed: true, approved: true });
+    });
+    goto('confirm');
+  }
 
   /* ---------- 确认页 ---------- */
   function renderConfirm() {
@@ -849,16 +881,14 @@
   function commuteToChange() {
     var st = document.getElementById('toStart').value;
     var en = document.getElementById('toEnd').value;
-    var min = document.getElementById('toMin').value;
     updateCommuteSaved();
-    showToast('上班通勤已更新', st + ' 出发 · ' + en + ' 到达 · 约 ' + min + ' 分钟');
+    showToast('上班通勤已更新', st + ' 出发 · ' + en + ' 到达 · 约 ' + Math.max(0, t2m(en) - t2m(st)) + ' 分钟');
   }
   function commuteFromChange() {
     var st = document.getElementById('fromStart').value;
     var en = document.getElementById('fromEnd').value;
-    var min = document.getElementById('fromMin').value;
     updateCommuteSaved();
-    showToast('下班通勤已更新', st + ' 出发 · ' + en + ' 到达 · 约 ' + min + ' 分钟');
+    showToast('下班通勤已更新', st + ' 出发 · ' + en + ' 到达 · 约 ' + Math.max(0, t2m(en) - t2m(st)) + ' 分钟');
   }
   function updateCommuteSaved() {
     var ts = document.getElementById('toStart').value;
