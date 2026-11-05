@@ -253,7 +253,7 @@
   <!-- 1. 首页 -->
   <div class="screen active" id="screen-home">
     <div class="hero">
-      <div class="logo-row"><div class="logo">LP</div><div><h1>晚上好</h1><div class="date">10月31日 周六 · 收好今天的尾</div></div></div>
+      <div class="logo-row"><div class="logo">LP</div><div><h1 id="homeGreet">晚上好</h1><div class="date" id="homeDateLabel"></div></div></div>
     </div>
 
     <div class="hero-green">
@@ -516,22 +516,56 @@
     showScreen(navStack[navStack.length - 1]);
   }
 
-  /* ---------- 首页周历 ---------- */
+  /* ---------- 首页周历（动态：今天居中，前后各 3 天，点击联动） ---------- */
+  var WDAY_CN = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+  var homeSelectedDate = null;
+
+  function greetByHour() {
+    var h = new Date().getHours();
+    if (h < 6) return '凌晨好';
+    if (h < 12) return '早上好';
+    if (h < 18) return '下午好';
+    return '晚上好';
+  }
+
+  function isSameDay(a, b) {
+    return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  }
+
+  function fmtHomeDate(d) {
+    return (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + WDAY_CN[d.getDay()];
+  }
+
+  function renderHomeHeader() {
+    var today = new Date();
+    var selected = homeSelectedDate || today;
+    var dateEl = document.getElementById('homeDateLabel');
+    if (dateEl) dateEl.textContent = fmtHomeDate(selected) + (isSameDay(selected, today) ? ' · 收好今天的尾' : ' · 已选日程');
+    var greet = document.getElementById('homeGreet');
+    if (greet) greet.textContent = greetByHour();
+  }
+
+  function selectHomeDay(offset) {
+    var base = new Date();
+    homeSelectedDate = new Date(base.getFullYear(), base.getMonth(), base.getDate() + offset);
+    renderWeekStrip();
+    renderHomeHeader();
+  }
+
   function renderWeekStrip() {
     var strip = document.getElementById('weekStrip');
-    var days = [
-      { d: '周五', n: '31', gold: false }, { d: '周六', n: '01', gold: false },
-      { d: '周日', n: '02', gold: false }, { d: '周一', n: '03', gold: false },
-      { d: '周二', n: '04', gold: false }, { d: '周三', n: '05', gold: false },
-      { d: '周四', n: '06', gold: false }
-    ];
+    if (!strip) return;
     strip.innerHTML = '';
-    days.forEach(function (day, i) {
-      var cls = 'wd';
-      if (i === 1) cls += ' sel';
-      if (i === 0) cls += ' gold';
-      strip.innerHTML += '<div class="' + cls + '" onclick="showToast(\'' + day.d + ' ' + day.n + '日\',\'原型演示，仅高亮选中\')"><div class="d">' + day.d + '</div><div class="n">' + day.n + '</div></div>';
-    });
+    var base = new Date();
+    var selected = homeSelectedDate || base;
+    for (var i = -3; i <= 3; i++) {
+      var d = new Date(base.getFullYear(), base.getMonth(), base.getDate() + i);
+      var same = isSameDay(d, selected);
+      var label = i === 0 ? '今天' : WDAY_CN[d.getDay()];
+      var weekend = d.getDay() === 0 || d.getDay() === 6;
+      var cls = 'wd' + (same ? ' sel' : '') + (weekend ? ' gold' : '');
+      strip.innerHTML += '<div class="' + cls + '" onclick="selectHomeDay(' + i + ')"><div class="d">' + label + '</div><div class="n">' + d.getDate() + '</div></div>';
+    }
   }
 
   /* ---------- 创建页 ---------- */
@@ -1020,6 +1054,7 @@
 
   /* ---------- 初始化 ---------- */
   renderWeekStrip();
+  renderHomeHeader();
   renderFixedList();
   initTargetDate();
   renderConfirm();
