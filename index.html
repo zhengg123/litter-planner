@@ -851,8 +851,13 @@
     return { result: result, splitList: splitList };
   }
 
+  function nowClock() {
+    var d = new Date();
+    return pad0(d.getHours()) + ':' + pad0(d.getMinutes());
+  }
+
   function startWork() {
-    var actual = '08:30'; // 原型演示：模拟堵车晚到 30 分钟
+    var actual = nowClock(); // 动态获取设备当前本地时间
     workState.actualStart = actual;
     var btn = document.getElementById('workStartBtn');
     if (btn) btn.style.display = 'none';
@@ -901,7 +906,7 @@
   }
 
   function rejectSplit() {
-    var plan = planAfterStart(workState.actualStart || '08:30', false);
+    var plan = planAfterStart(workState.actualStart || nowClock(), false);
     timelineData = plan.result;
     pendingReplan = null;
     closeSplitSheet();
