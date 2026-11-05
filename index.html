@@ -315,7 +315,7 @@
 
     <div class="card date-line" style="margin-top:14px">
       <span class="l">目标日期</span>
-      <span class="v">2026年11月1日</span>
+      <input type="date" id="targetDate" style="border:1px solid var(--line);border-radius:10px;padding:7px 12px;font-size:13px;font-weight:600;color:var(--green);background:#fff;outline:none;flex:1;margin-left:12px" />
     </div>
 
     <div class="btn-primary" onclick="startEstimate()">智能规划时长</div>
@@ -330,7 +330,7 @@
     </div>
     <div class="est-tip">AI 预估的时长不一定准，请逐项确认或修改后再生成时间轴</div>
     <div class="card" id="confirmList"></div>
-    <div class="btn-primary disabled" id="scheduleBtn" onclick="goto('timeline')">生成今日最终时间轴</div>
+    <div class="btn-primary disabled" id="scheduleBtn" onclick="confirmAndSchedule()">生成今日最终时间轴</div>
     <div class="hint" id="scheduleHint">全部任务确认后才能生成时间轴</div>
   </div>
 
@@ -348,7 +348,7 @@
   <!-- 5. 今日事项 -->
   <div class="screen" id="screen-today">
     <div class="card tl-summary">
-      <div class="d">2026年11月1日</div>
+      <div class="d" id="todayDateLabel"></div>
       <div class="src" id="todayProgress">0/6 已完成</div>
     </div>
 
@@ -653,8 +653,81 @@
     document.getElementById('approvedCount').textContent = approved + '/' + total + ' 已确认';
     var btn = document.getElementById('scheduleBtn');
     var hint = document.getElementById('scheduleHint');
-    if (approved >= total) { btn.classList.remove('disabled'); btn.setAttribute('onclick', "goto('timeline')"); hint.textContent = ''; }
+    if (approved >= total) { btn.classList.remove('disabled'); btn.setAttribute('onclick', "confirmAndSchedule()"); hint.textContent = ''; }
     else { btn.classList.add('disabled'); btn.setAttribute('onclick', ''); hint.textContent = '全部任务确认后才能生成时间轴'; }
+  }
+
+  /* ---------- 由确认结果生成最新时间轴（Bug 二修复） ---------- */
+  function generateTimeline(est) {
+    var workStart = 8 * 60, workEnd = 18 * 60;
+    var lunchS = 12 * 60, lunchE = 13 * 60;
+    var result = [];
+    var fixed = [], free = [];
+
+    est.forEach(function (it) {
+      if (it.isFixed) fixed.push({ title: it.title, startTime: it.startTime, endTime: it.endTime });
+      else free.push({ title: it.title, minutes: it.minutes });
+    });
+
+    var windows = [{ s: workStart, e: workEnd }];
+    windows = subtractWindows(windows, lunchS, lunchE);
+    fixed.forEach(function (f) {
+      windows = subtractWindows(windows, t2m(f.startTime), t2m(f.endTime));
+    });
+
+    fixed.forEach(function (f) {
+      result.push({ title: f.title, startTime: f.startTime, endTime: f.endTime, minutes: t2m(f.endTime) - t2m(f.startTime), isFixed: true, isImportant: false, done: false });
+    });
+
+    free.forEach(function (t) {
+      var placed = false;
+      for (var i = 0; i < windows.length; i++) {
+        var w = windows[i];
+        if (w.e - w.s >= t.minutes) {
+          result.push({ title: t.title, startTime: m2t(w.s), endTime: m2t(w.s + t.minutes), minutes: t.minutes, isFixed: false, isImportant: false, done: false });
+          w.s += t.minutes;
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) {
+        result.push({ title: t.title, startTime: '--', endTime: '--', minutes: t.minutes, isFixed: false, isImportant: false, done: false, overflow: true });
+      }
+    });
+
+    result.sort(function (a, b) { return (t2m(a.startTime) || 1439) - (t2m(b.startTime) || 1439); });
+    return result;
+  }
+
+  function confirmAndSchedule() {
+    var total = estimateData.length;
+    var approved = estimateData.filter(function (i) { return i.approved; }).length;
+    if (approved < total) { showToast('请先确认所有任务的时长', ''); return; }
+    timelineData = generateTimeline(estimateData);
+    goto('timeline');
+  }
+
+  /* ---------- 目标日期（Bug 一修复） ---------- */
+  function todayISO() {
+    var d = new Date();
+    return d.getFullYear() + '-' + pad0(d.getMonth() + 1) + '-' + pad0(d.getDate());
+  }
+  function fmtDateCN(iso) {
+    var p = String(iso).split('-');
+    return Number(p[0]) + '年' + Number(p[1]) + '月' + Number(p[2]) + '日';
+  }
+  function initTargetDate() {
+    var el = document.getElementById('targetDate');
+    var iso = todayISO();
+    if (el) { el.value = iso; el.min = iso; }
+    var label = document.getElementById('todayDateLabel');
+    if (label) label.textContent = fmtDateCN(iso);
+  }
+  function onTargetDateChange() {
+    var el = document.getElementById('targetDate');
+    var iso = el.value || todayISO();
+    var label = document.getElementById('todayDateLabel');
+    if (label) label.textContent = fmtDateCN(iso);
   }
 
   /* ---------- 时间轴 ---------- */
@@ -911,6 +984,7 @@
   /* ---------- 初始化 ---------- */
   renderWeekStrip();
   renderFixedList();
+  initTargetDate();
   renderConfirm();
   renderTimeline();
   renderToday();
