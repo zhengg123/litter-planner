@@ -680,18 +680,47 @@
     });
 
     free.forEach(function (t) {
-      var placed = false;
+      var remaining = t.minutes;
+
+      // 优先整块放入某个空档
+      var whole = false;
       for (var i = 0; i < windows.length; i++) {
         var w = windows[i];
-        if (w.e - w.s >= t.minutes) {
-          result.push({ title: t.title, startTime: m2t(w.s), endTime: m2t(w.s + t.minutes), minutes: t.minutes, isFixed: false, isImportant: false, done: false });
-          w.s += t.minutes;
-          placed = true;
+        if (w.e - w.s >= remaining) {
+          result.push({ title: t.title, startTime: m2t(w.s), endTime: m2t(w.s + remaining), minutes: t.minutes, isFixed: false, isImportant: false, done: false });
+          w.s += remaining;
+          whole = true;
           break;
         }
       }
-      if (!placed) {
-        result.push({ title: t.title, startTime: '--', endTime: '--', minutes: t.minutes, isFixed: false, isImportant: false, done: false, overflow: true });
+      if (whole) return;
+
+      // 整块放不下 → 自动拆分为多段，填入各空档
+      var segs = [];
+      for (var j = 0; j < windows.length && remaining > 0; j++) {
+        var w2 = windows[j];
+        var avail = w2.e - w2.s;
+        if (avail < 5) continue;
+        if (remaining <= avail) {
+          segs.push({ s: w2.s, e: w2.s + remaining });
+          w2.s += remaining;
+          remaining = 0;
+        } else if (avail >= 30) {
+          segs.push({ s: w2.s, e: w2.e });
+          w2.s = w2.e;
+          remaining -= avail;
+        }
+      }
+      if (segs.length) {
+        segs.forEach(function (sg, k) {
+          result.push({ title: t.title + '（' + (k + 1) + '/' + segs.length + '）', startTime: m2t(sg.s), endTime: m2t(sg.e), minutes: sg.e - sg.s, isFixed: false, isImportant: false, done: false, splitOf: t.title });
+        });
+      }
+
+      // 兜底：空档总和仍不够时，顺延到工作时段末尾，保证任务有合法时间，绝不返回空值
+      if (remaining > 0) {
+        var fallbackS = Math.max(0, workEnd - remaining);
+        result.push({ title: t.title, startTime: m2t(fallbackS), endTime: m2t(fallbackS + remaining), minutes: remaining, isFixed: false, isImportant: false, done: false, overflow: true });
       }
     });
 
@@ -735,11 +764,14 @@
     var dotClass = 'dot' + (t.isFixed ? ' fixed' : '') + (t.isImportant ? ' imp' : '');
     var line = isLast ? '' : '<div class="line"></div>';
     var right = done ? '<span class="check-done">✓ 已完成</span>' : '<span class="check-btn" onclick="checkoff(' + idx + ')">打卡</span>';
-    var meta = '<span>' + t.startTime + ' - ' + t.endTime + '</span>';
+    var s = (t.startTime && t.startTime !== '--' && t.startTime !== '--:--') ? t.startTime : '待排';
+    var e = (t.endTime && t.endTime !== '--' && t.endTime !== '--:--') ? t.endTime : '待排';
+    var meta = '<span>' + s + ' - ' + e + '</span>';
     if (t.isFixed) meta += '<span class="tag fixed">固定</span>';
     if (t.isImportant && !t.isFixed) meta += '<span class="tag important">重要</span>';
+    if (t.overflow) meta += '<span class="tag overflow">超时顺延</span>';
     return '<div class="tl-item">' +
-      '<div class="tl-time"><span class="s">' + t.startTime + '</span><span class="e">' + t.endTime + '</span></div>' +
+      '<div class="tl-time"><span class="s">' + s + '</span><span class="e">' + e + '</span></div>' +
       '<div class="tl-rail"><span class="' + dotClass + '"></span>' + line + '</div>' +
       '<div class="tl-card"><div class="top"><span class="ttl">' + t.title + '</span>' + right + '</div>' +
       '<div class="meta">' + meta + '</div></div></div>';
