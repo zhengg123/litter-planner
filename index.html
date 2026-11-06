@@ -269,7 +269,7 @@
     <div class="week-strip" id="weekStrip"></div>
 
     <div class="routine-bar">
-      <div class="t">07:00 – 23:00 · 午休 12:00–13:00</div>
+      <div class="t" id="routineText"></div>
       <div class="adj" onclick="goto('profile')">调整</div>
     </div>
 
@@ -386,19 +386,19 @@
     <div class="card" style="padding:8px 20px">
       <div class="setting-row">
         <div class="l">起床时间<em>一天从这里开始</em></div>
-        <input type="time" value="07:00" onchange="commuteToast('起床时间')">
+        <input type="time" id="rt-wake" value="07:00" onchange="onRoutine('wake','起床时间')">
       </div>
       <div class="setting-row">
         <div class="l">午休开始<em>不安排任务</em></div>
-        <input type="time" value="12:00" onchange="commuteToast('午休开始')">
+        <input type="time" id="rt-lunchStart" value="12:00" onchange="onRoutine('lunchStart','午休开始')">
       </div>
       <div class="setting-row">
         <div class="l">午休结束<em>恢复工作</em></div>
-        <input type="time" value="13:00" onchange="commuteToast('午休结束')">
+        <input type="time" id="rt-lunchEnd" value="13:00" onchange="onRoutine('lunchEnd','午休结束')">
       </div>
       <div class="setting-row">
         <div class="l">夜间休息<em>当天排程到此为止</em></div>
-        <input type="time" value="23:00" onchange="commuteToast('夜间休息')">
+        <input type="time" id="rt-sleep" value="23:00" onchange="onRoutine('sleep','夜间休息')">
       </div>
     </div>
 
@@ -465,23 +465,29 @@
     { title: '项目评审会', start: '14:00', end: '17:00' }
   ];
 
-  var futureData = {
-    '2026-11-01': {
-      label: '11月1日', rel: '明天 · 周日',
-      items: [
-        { title: '客户方案评审', start: '10:00', dur: '1 小时', end: '11:00', important: true },
-        { title: '整理月度数据', start: '14:00', dur: '1 小时', end: '15:00', important: false },
-        { title: '健身房', start: '17:30', dur: '1 小时', end: '18:30', important: false }
-      ]
-    },
-    '2026-11-03': {
-      label: '11月3日', rel: '周二',
-      items: [
-        { title: '部门周会', start: '09:30', dur: '40 分钟', end: '10:10', important: false },
-        { title: '提交预算表', start: '15:00', dur: '1 小时', end: '16:00', important: true, remind: '14:30' }
-      ]
-    }
+  var futureData = {};
+
+  var routineProfile = {
+    wake: '07:00', sleep: '23:00', lunchStart: '12:00', lunchEnd: '13:00'
   };
+
+  // 动态生成未来 14 天分组（以设备真实今天为起点）
+  function buildFutureData() {
+    futureData = {};
+    var base = new Date();
+    for (var i = 1; i <= 14; i++) {
+      var d = new Date(base.getFullYear(), base.getMonth(), base.getDate() + i);
+      var key = d.getFullYear() + '-' + pad0(d.getMonth() + 1) + '-' + pad0(d.getDate());
+      var label = (d.getMonth() + 1) + '月' + d.getDate() + '日';
+      var rel = i === 1 ? '明天' : (i === 2 ? '后天' : WDAY_CN[d.getDay()]);
+      futureData[key] = { label: label, rel: rel, items: [] };
+    }
+  }
+
+  function renderRoutineBar() {
+    var el = document.getElementById('routineText');
+    if (el) el.textContent = routineProfile.wake + ' – ' + routineProfile.sleep + ' · 午休 ' + routineProfile.lunchStart + '–' + routineProfile.lunchEnd;
+  }
 
   var navStack = ['home'];
   var navTitles = {
@@ -499,8 +505,14 @@
     document.getElementById('navTitle').textContent = navTitles[name] || 'LittlePlanner';
     document.getElementById('navBack').style.display = (name === 'home') ? 'none' : 'flex';
     var right = document.getElementById('navRight');
-    if (navRightText[name]) { right.style.display = 'block'; right.textContent = navRightText[name]; }
-    else { right.style.display = 'none'; }
+    if (navRightText[name]) {
+      right.style.display = 'block';
+      right.textContent = navRightText[name];
+      right.onclick = function () {
+        if (name === 'profile') showToast('当前即为设置页，可直接修改作息与通勤', '');
+        else if (name === 'future') showToast('未来 14 天安排', '点某天展开查看与添加');
+      };
+    } else { right.style.display = 'none'; right.onclick = null; }
     window.scrollTo(0, 0);
   }
   function goto(name) {
@@ -762,15 +774,37 @@
     return result;
   }
 
+  var targetDate = '';
+
   function confirmAndSchedule() {
     var total = estimateData.length;
     var approved = estimateData.filter(function (i) { return i.approved; }).length;
     if (approved < total) { showToast('请先确认所有任务的时长', ''); return; }
-    timelineData = generateTimeline(estimateData);
-    goto('timeline');
+    var plan = generateTimeline(estimateData);
+
+    if (targetDate === todayISO()) {
+      timelineData = plan;
+      goto('timeline');
+    } else {
+      // 目标日期为未来 → 归档到未来事项分组，绝不污染今日时间轴
+      if (!futureData[targetDate]) {
+        var d = new Date(targetDate + 'T00:00:00');
+        futureData[targetDate] = { label: (d.getMonth() + 1) + '月' + d.getDate() + '日', rel: WDAY_CN[d.getDay()], items: [] };
+      }
+      var group = futureData[targetDate];
+      group.items = plan.map(function (t) {
+        var dur = (t.startTime && t.endTime && t.startTime !== '--' && t.endTime !== '待排')
+          ? (t2m(t.endTime) - t2m(t.startTime)) + ' 分钟'
+          : '待定';
+        return { title: t.title, start: t.startTime, dur: dur, end: t.endTime, important: !!t.isImportant, remind: t.isImportant ? t.startTime : '' };
+      });
+      renderFuture();
+      goto('future');
+      showToast('已安排到 ' + group.label, '共 ' + group.items.length + ' 项');
+    }
   }
 
-  /* ---------- 目标日期（Bug 一修复） ---------- */
+  /* ---------- 目标日期（动态） ---------- */
   function todayISO() {
     var d = new Date();
     return d.getFullYear() + '-' + pad0(d.getMonth() + 1) + '-' + pad0(d.getDate());
@@ -780,17 +814,17 @@
     return Number(p[0]) + '年' + Number(p[1]) + '月' + Number(p[2]) + '日';
   }
   function initTargetDate() {
+    targetDate = todayISO();
     var el = document.getElementById('targetDate');
-    var iso = todayISO();
-    if (el) { el.value = iso; el.min = iso; }
+    if (el) { el.value = targetDate; el.min = targetDate; }
     var label = document.getElementById('todayDateLabel');
-    if (label) label.textContent = fmtDateCN(iso);
+    if (label) label.textContent = fmtDateCN(targetDate);
   }
   function onTargetDateChange() {
     var el = document.getElementById('targetDate');
-    var iso = el.value || todayISO();
+    targetDate = el.value || todayISO();
     var label = document.getElementById('todayDateLabel');
-    if (label) label.textContent = fmtDateCN(iso);
+    if (label) label.textContent = fmtDateCN(targetDate);
   }
 
   /* ---------- 时间轴 ---------- */
@@ -1042,6 +1076,12 @@
     document.getElementById('commuteSaved').textContent = '✓ 已记录通勤：上班 ' + ts + '-' + te + ' · 下班 ' + fs + '-' + fe;
   }
   function commuteToast(name) { showToast(name + ' 已更新', '智能规划会按此边界安排'); }
+  function onRoutine(field, label) {
+    var val = document.getElementById('rt-' + field).value;
+    routineProfile[field] = val;
+    renderRoutineBar();
+    showToast(label + ' 已更新', '智能规划会按此边界安排');
+  }
 
   /* ---------- Toast ---------- */
   function showToast(title, sub) {
@@ -1053,8 +1093,10 @@
   }
 
   /* ---------- 初始化 ---------- */
+  buildFutureData();
   renderWeekStrip();
   renderHomeHeader();
+  renderRoutineBar();
   renderFixedList();
   initTargetDate();
   renderConfirm();
