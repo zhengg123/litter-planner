@@ -193,6 +193,15 @@
   .f-card .body .ttl { font-size: 14px; font-weight: 600; word-break: break-all; }
   .f-card .body .sub { margin-top: 5px; font-size: 12px; color: var(--text-sub); }
   .f-card .body .remind { display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; padding: 3px 8px; border-radius: 6px; background: rgba(232,182,76,.16); color: #8A6B2A; font-size: 11px; }
+  .f-sec-title { display: flex; align-items: center; margin: 16px 4px 0; font-size: 13px; font-weight: 600; color: var(--green); }
+  .f-sec-title em { font-style: normal; margin-left: auto; font-size: 12px; font-weight: 600; color: var(--green); cursor: pointer; }
+  .f-empty-add { padding: 22px 8px; text-align: center; color: #9AA3B2; font-size: 14px; line-height: 1.7; }
+  .upcoming-wrap { margin-top: 14px; }
+  .upcoming-label { margin: 0 4px 8px; font-size: 13px; font-weight: 600; color: var(--green); }
+  .upcoming-strip { display: flex; flex-wrap: wrap; gap: 8px; }
+  .upcoming-pill { display: inline-flex; align-items: center; padding: 6px 12px; border-radius: 999px; background: #fff; border: 1px solid var(--line); font-size: 12px; font-weight: 500; color: var(--text-sub); cursor: pointer; }
+  .upcoming-pill.on { background: var(--green); border-color: var(--green); color: #fff; }
+  .upcoming-empty { align-self: center; font-size: 12px; color: var(--text-mute); }
 
   /* 我的 */
   .profile-head { display: flex; align-items: center; gap: 14px; padding: 4px 4px 18px; }
@@ -273,7 +282,7 @@
       <div class="adj" onclick="goto('profile')">调整</div>
     </div>
 
-    <div class="btn-primary gold" onclick="goto('create')">＋ 创建事项清单<span style="flex:1"></span><span>→</span></div>
+    <div class="btn-primary gold" onclick="startTodayPlan()">＋ 创建事项清单<span style="flex:1"></span><span>→</span></div>
     <div class="tip" style="text-align:center;margin-top:10px">写下第一件事，一键排成时间轴</div>
 
     <div class="grid">
@@ -285,7 +294,7 @@
 
   <!-- 2. 创建事项 -->
   <div class="screen" id="screen-create">
-    <div class="intro"><b>把忙乱写下来</b><div class="s">自由待办一条一行；有固定时间的会议单独添加</div></div>
+    <div class="intro"><b id="createIntro">把忙乱写下来</b><div class="s" id="createIntroSub">自由待办一条一行；有固定时间的会议单独添加</div></div>
     <div class="card">
       <textarea id="taskInput" placeholder="例如：写周报、回复客户邮件、准备下午的汇报" oninput="syncLineCount()">回复客户邮件
 准备下午的汇报
@@ -315,8 +324,9 @@
 
     <div class="card date-line" style="margin-top:14px">
       <span class="l">目标日期</span>
-      <input type="date" id="targetDate" style="border:1px solid var(--line);border-radius:10px;padding:7px 12px;font-size:13px;font-weight:600;color:var(--green);background:#fff;outline:none;flex:1;margin-left:12px" />
+      <input type="date" id="targetDate" onchange="onTargetDateChange()" style="border:1px solid var(--line);border-radius:10px;padding:7px 12px;font-size:13px;font-weight:600;color:var(--green);background:#fff;outline:none;flex:1;margin-left:12px;cursor:pointer" />
     </div>
+    <div class="tip" id="dateLockTip" style="text-align:center;margin-top:8px;display:none">🔒 日期已锁定为该未来日期，生成后归档到该日</div>
 
     <div class="btn-primary" onclick="startEstimate()">智能规划时长</div>
     <div class="tip" style="text-align:center;margin-top:22px">会结合作息，避开午休与固定时间</div>
@@ -330,19 +340,20 @@
     </div>
     <div class="est-tip">AI 预估的时长不一定准，请逐项确认或修改后再生成时间轴</div>
     <div class="card" id="confirmList"></div>
-    <div class="btn-primary disabled" id="scheduleBtn" onclick="confirmAndSchedule()">生成今日最终时间轴</div>
+    <div class="btn-primary disabled" id="scheduleBtn" onclick="confirmAndSchedule()"><span id="scheduleBtnText">生成今日最终时间轴</span></div>
     <div class="hint" id="scheduleHint">全部任务确认后才能生成时间轴</div>
   </div>
 
   <!-- 4. 最终时间轴 -->
   <div class="screen" id="screen-timeline">
     <div class="card tl-summary">
-      <div class="d">今日时间轴</div>
+      <div class="d" id="timelineTitle">今日时间轴</div>
       <div class="src">已锁定固定时段</div>
     </div>
     <div class="card" style="margin-top:14px;padding:8px 16px" id="timelineList"></div>
     <div class="btn-primary" onclick="goto('today')">保存清单并查看今日</div>
-    <div class="btn-ghost" style="margin-top:10px" onclick="goto('create')">重新规划</div>
+    <div class="btn-ghost" style="margin-top:10px" onclick="startTodayPlan()">重新规划</div>
+    <div class="btn-ghost" style="margin-top:10px" onclick="goHome()">返回首页</div>
   </div>
 
   <!-- 5. 今日事项 -->
@@ -362,18 +373,29 @@
     <div class="ws-done" id="workStartDone" style="display:none"></div>
 
     <div class="card" style="margin-top:14px;padding:8px 16px" id="todayList"></div>
-    <div class="btn-ghost" style="margin-top:18px" onclick="goto('create')">＋ 继续添加今日事项</div>
+    <div class="btn-ghost" style="margin-top:18px" onclick="startTodayPlan()">＋ 继续添加今日事项</div>
   </div>
 
-  <!-- 6. 未来事项 -->
+  <!-- 6. 未来事项（日历自由选择） -->
   <div class="screen" id="screen-future">
     <div class="card-green future-sum">
       <div class="small">UPCOMING PLAN</div>
-      <div class="num">6<em> 项安排</em></div>
-      <div class="desc">按日期聚合。到那一天，它们会自动进入「今日事项」时间轴。</div>
+      <div class="num" id="futureCount">0<em> 项安排</em></div>
+      <div class="desc">选择任意未来日期，按天查看与安排。到那一天它们会自动进入「今日事项」。</div>
     </div>
-    <div id="futureGroups"></div>
-    <div class="btn-ghost" style="margin-top:18px" onclick="goto('create')">＋ 安排未来某天的事项</div>
+    <div class="upcoming-wrap">
+      <div class="upcoming-label">📅 未来排期速览</div>
+      <div class="upcoming-strip" id="upcomingStrip"></div>
+    </div>
+    <div class="card" style="margin-top:14px;padding:12px 16px">
+      <div class="picker-row">
+        <input type="date" id="futureDatePicker" onchange="onFutureDateChange()" style="flex:1;height:42px;padding:0 12px;border:1px solid var(--line);border-radius:10px;font-size:15px;outline:none">
+      </div>
+      <div id="futureDateLabel" style="margin-top:8px;font-size:13px;color:#7A8499"></div>
+    </div>
+    <div class="card" style="margin-top:14px;padding:8px 16px" id="futureItems"></div>
+    <div class="btn-primary" style="margin-top:18px" onclick="startFuturePlan()">＋ 创建该日智能规划清单</div>
+    <div class="btn-ghost" style="margin-top:10px" onclick="addFutureItem()">＋ 添加提醒事项</div>
   </div>
 
   <!-- 7. 我的 -->
@@ -457,13 +479,10 @@
     { title: '整理季度数据', startTime: '08:25', endTime: '09:10', minutes: 45, isFixed: false, isImportant: false, done: false },
     { title: '部门周会', startTime: '10:00', endTime: '11:00', minutes: 60, isFixed: true, isImportant: true, done: false },
     { title: '准备明天汇报', startTime: '13:00', endTime: '14:00', minutes: 60, isFixed: false, isImportant: false, done: false },
-    { title: '项目评审会', startTime: '14:00', endTime: '15:00', minutes: 60, isFixed: true, isImportant: true, done: false },
     { title: '写季度总结报告', startTime: '15:00', endTime: '18:00', minutes: 180, isFixed: false, isImportant: true, done: false }
   ];
 
-  var manualFixed = [
-    { title: '项目评审会', start: '14:00', end: '17:00' }
-  ];
+  var manualFixed = [];
 
   var futureData = {};
 
@@ -471,17 +490,50 @@
     wake: '07:00', sleep: '23:00', lunchStart: '12:00', lunchEnd: '13:00'
   };
 
-  // 动态生成未来 14 天分组（以设备真实今天为起点）
-  function buildFutureData() {
-    futureData = {};
-    var base = new Date();
-    for (var i = 1; i <= 14; i++) {
-      var d = new Date(base.getFullYear(), base.getMonth(), base.getDate() + i);
-      var key = d.getFullYear() + '-' + pad0(d.getMonth() + 1) + '-' + pad0(d.getDate());
-      var label = (d.getMonth() + 1) + '月' + d.getDate() + '日';
-      var rel = i === 1 ? '明天' : (i === 2 ? '后天' : WDAY_CN[d.getDay()]);
-      futureData[key] = { label: label, rel: rel, items: [] };
+  var futureSelectedDate = '';
+  var planMode = 'today';      // 'today' | 'future'
+  var lockedPlanDate = '';
+
+  function isTomorrowISO(iso) {
+    var d = new Date();
+    d.setDate(d.getDate() + 1);
+    return iso === (d.getFullYear() + '-' + pad0(d.getMonth() + 1) + '-' + pad0(d.getDate()));
+  }
+
+  function fmtFutureDate(iso) {
+    var d = new Date(iso + 'T00:00:00');
+    var rel = (iso === todayISO()) ? '今天' : (isTomorrowISO(iso) ? '明天' : WDAY_CN[d.getDay()]);
+    return (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + rel;
+  }
+
+  function ensureFutureGroup(iso) {
+    if (!futureData[iso]) {
+      var d = new Date(iso + 'T00:00:00');
+      futureData[iso] = { label: (d.getMonth() + 1) + '月' + d.getDate() + '日', rel: WDAY_CN[d.getDay()], items: [], plan: [] };
     }
+    return futureData[iso];
+  }
+
+  function applyFutureDate() {
+    var picker = document.getElementById('futureDatePicker');
+    var label = document.getElementById('futureDateLabel');
+    if (picker) { picker.value = futureSelectedDate; picker.min = todayISO(); }
+    if (label) label.textContent = fmtFutureDate(futureSelectedDate);
+    ensureFutureGroup(futureSelectedDate);
+    renderFuture();
+  }
+
+  function initFutureDate() {
+    var d = new Date();
+    d.setDate(d.getDate() + 1);
+    futureSelectedDate = d.getFullYear() + '-' + pad0(d.getMonth() + 1) + '-' + pad0(d.getDate());
+    applyFutureDate();
+  }
+
+  function onFutureDateChange() {
+    var picker = document.getElementById('futureDatePicker');
+    futureSelectedDate = picker.value || futureSelectedDate || todayISO();
+    applyFutureDate();
   }
 
   function renderRoutineBar() {
@@ -494,7 +546,7 @@
     home: 'LittlePlanner', create: '创建事项清单', confirm: '确认每项时长',
     timeline: '今日时间轴', today: '今日事项', future: '未来事项', profile: '我的'
   };
-  var navRightText = { future: '未来 14 天', profile: '设置' };
+  var navRightText = { future: '自由选择日期', profile: '设置' };
 
   /* ---------- 页面跳转 ---------- */
   function showScreen(name) {
@@ -510,7 +562,7 @@
       right.textContent = navRightText[name];
       right.onclick = function () {
         if (name === 'profile') showToast('当前即为设置页，可直接修改作息与通勤', '');
-        else if (name === 'future') showToast('未来 14 天安排', '点某天展开查看与添加');
+        else if (name === 'future') showToast('未来事项', '日历中选择任意日期查看与添加');
       };
     } else { right.style.display = 'none'; right.onclick = null; }
     window.scrollTo(0, 0);
@@ -526,6 +578,20 @@
   function goBack() {
     if (navStack.length > 1) navStack.pop();
     showScreen(navStack[navStack.length - 1]);
+  }
+  function goHome() {
+    navStack = ['home'];
+    showScreen('home');
+    window.scrollTo(0, 0);
+  }
+  // 规划流程收口：生成结果页后重置栈为 [首页, 结果页]，返回键直接回首页
+  function launchResult(name) {
+    navStack = ['home', name];
+    showScreen(name);
+    if (name === 'confirm') renderConfirm();
+    if (name === 'timeline') renderTimeline();
+    if (name === 'today') renderToday();
+    if (name === 'future') renderFuture();
   }
 
   /* ---------- 首页周历（动态：今天居中，前后各 3 天，点击联动） ---------- */
@@ -784,24 +850,72 @@
 
     if (targetDate === todayISO()) {
       timelineData = plan;
-      goto('timeline');
+      launchResult('timeline');
     } else {
-      // 目标日期为未来 → 归档到未来事项分组，绝不污染今日时间轴
-      if (!futureData[targetDate]) {
-        var d = new Date(targetDate + 'T00:00:00');
-        futureData[targetDate] = { label: (d.getMonth() + 1) + '月' + d.getDate() + '日', rel: WDAY_CN[d.getDay()], items: [] };
-      }
-      var group = futureData[targetDate];
-      group.items = plan.map(function (t) {
-        var dur = (t.startTime && t.endTime && t.startTime !== '--' && t.endTime !== '待排')
-          ? (t2m(t.endTime) - t2m(t.startTime)) + ' 分钟'
-          : '待定';
-        return { title: t.title, start: t.startTime, dur: dur, end: t.endTime, important: !!t.isImportant, remind: t.isImportant ? t.startTime : '' };
+      // 目标日期为未来 → 生成该日智能规划清单，绝不污染今日时间轴
+      var group = ensureFutureGroup(targetDate);
+      group.plan = plan.map(function (t) {
+        return { title: t.title, startTime: t.startTime, endTime: t.endTime, minutes: t.minutes, isFixed: !!t.isFixed, isImportant: !!t.isImportant };
       });
-      renderFuture();
-      goto('future');
-      showToast('已安排到 ' + group.label, '共 ' + group.items.length + ' 项');
+      futureSelectedDate = targetDate;
+      launchResult('future');
+      applyFutureDate();
+      showToast('已生成 ' + group.label + ' 智能规划', '共 ' + group.plan.length + ' 项');
     }
+  }
+
+  /* ---------- 智能规划入口：today / future ---------- */
+  function applyCreateMode() {
+    var isFuture = planMode === 'future';
+    var intro = document.getElementById('createIntro');
+    var sub = document.getElementById('createIntroSub');
+    var dateInput = document.getElementById('targetDate');
+    var lockTip = document.getElementById('dateLockTip');
+    if (intro) intro.textContent = isFuture ? ('创建 ' + fmtFutureDate(lockedPlanDate) + ' 智能规划清单') : '把忙乱写下来';
+    if (sub) sub.textContent = isFuture ? '该日清单的日期已锁定 · 自由待办一条一行' : '自由待办一条一行；有固定时间的会议单独添加';
+    if (dateInput) { dateInput.disabled = isFuture; dateInput.value = isFuture ? lockedPlanDate : targetDate; }
+    if (lockTip) lockTip.style.display = isFuture ? 'block' : 'none';
+    var sb = document.getElementById('scheduleBtnText');
+    if (sb) sb.textContent = isFuture ? '生成该日最终时间轴' : '生成今日最终时间轴';
+    var tl = document.getElementById('timelineTitle');
+    if (tl) tl.textContent = isFuture ? lockedPlanDate + ' 时间轴' : '今日时间轴';
+  }
+
+  function startTodayPlan() {
+    planMode = 'today';
+    lockedPlanDate = '';
+    targetDate = todayISO();
+    applyCreateMode();
+    goto('create');
+  }
+
+  function startFuturePlan(reset) {
+    if (!futureSelectedDate) return;
+    planMode = 'future';
+    lockedPlanDate = futureSelectedDate;
+    targetDate = futureSelectedDate;
+    if (reset !== false) {
+      document.getElementById('taskInput').value = '';
+      manualFixed.length = 0;
+    }
+    renderFixedList();
+    syncLineCount();
+    estimateData = [];
+    applyCreateMode();
+    goto('create');
+  }
+
+  function replanFuture() {
+    if (!futureSelectedDate) return;
+    var g = ensureFutureGroup(futureSelectedDate);
+    manualFixed.length = 0;
+    var lines = [];
+    (g.plan || []).forEach(function (t) {
+      if (t.isFixed) manualFixed.push({ title: t.title, start: t.startTime, end: t.endTime });
+      else lines.push(t.title);
+    });
+    document.getElementById('taskInput').value = lines.join('\n');
+    startFuturePlan(false);
   }
 
   /* ---------- 目标日期（动态） ---------- */
@@ -1017,42 +1131,111 @@
 
   /* ---------- 未来事项 ---------- */
   function renderFuture() {
-    var box = document.getElementById('futureGroups');
+    var box = document.getElementById('futureItems');
+    if (!box) return;
+
+    var cnt = 0;
+    Object.keys(futureData).forEach(function (k) {
+      cnt += futureData[k].items.length + (futureData[k].plan ? futureData[k].plan.length : 0);
+    });
+    var cn = document.getElementById('futureCount');
+    if (cn) cn.innerHTML = cnt + '<em> 项安排</em>';
+
     box.innerHTML = '';
-    Object.keys(futureData).forEach(function (key) {
-      var g = futureData[key];
-      box.innerHTML += '<div class="fgroup"><div class="fgroup-head">' +
-        '<span><span class="day">' + g.label + '</span><span class="rel">' + g.rel + '</span></span>' +
-        '<span class="add" onclick="addFutureItem(\'' + key + '\')">＋ 添加</span></div>';
-      g.items.forEach(function (it) {
-        var tags = '';
-        if (it.important) tags += '<span class="tag important" style="margin:0 0 0 6px">重要</span>';
-        var remind = it.remind ? '<span class="remind">🔔 提醒 ' + it.remind + '</span>' : '';
-        box.innerHTML += '<div class="f-card"><div class="t"><span class="s">' + it.start + '</span><span class="e">至 ' + it.end + '</span></div>' +
-          '<div class="body"><div class="ttl">' + it.title + tags + '</div>' +
+    var g = ensureFutureGroup(futureSelectedDate);
+    var hasPlan = !!(g.plan && g.plan.length);
+    var hasItems = g.items.length > 0;
+
+    // 智能规划清单（整日时间轴）
+    if (hasPlan) {
+      box.innerHTML += '<div class="f-sec-title">智能规划清单<em onclick="replanFuture()">重新规划</em></div>';
+      box.innerHTML += '<div class="card" style="padding:6px 16px;margin-top:8px">';
+      g.plan.forEach(function (t) {
+        var tags = (t.isFixed ? '<span class="tag fixed" style="margin-left:6px">固定</span>' : '') +
+          (t.isImportant ? '<span class="tag important" style="margin-left:6px">重要</span>' : '');
+        box.innerHTML += '<div class="f-card"><div class="t"><span class="s">' + (t.startTime || '待定') + '</span><span class="e">' + (t.endTime ? '至 ' + t.endTime : '') + '</span></div>' +
+          '<div class="body"><div class="ttl">' + t.title + tags + '</div>' +
+          '<div class="sub">' + (t.minutes != null ? t.minutes + ' 分钟' : '') + '</div></div></div>';
+      });
+      box.innerHTML += '</div>';
+    }
+
+    // 提醒事项（单条）
+    if (hasItems) {
+      box.innerHTML += '<div class="f-sec-title">提醒事项</div>';
+      box.innerHTML += '<div class="card" style="padding:6px 16px;margin-top:8px">';
+      g.items.forEach(function (it, idx) {
+        var tags = it.important ? '<span class="tag important" style="margin-left:6px">重要</span>' : '';
+        var remind = it.remind ? '<span class="remind">提醒 ' + it.remind + '</span>' : '';
+        box.innerHTML += '<div class="f-card"><div class="t"><span class="s">' + (it.start || '') + '</span><span class="e">' + (it.end ? '至 ' + it.end : '') + '</span></div>' +
+          '<div class="body"><div class="ttl">' + it.title + tags + ' <span class="del" style="float:right;font-size:12px;color:#E25C5C" onclick="removeFutureItem(' + idx + ')">删除</span></div>' +
           '<div class="sub">' + it.dur + '</div>' + remind + '</div></div>';
       });
-      box.innerHTML += '<div id="addform-' + key + '"></div></div>';
+      box.innerHTML += '</div>';
+    }
+
+    if (!hasPlan && !hasItems) {
+      box.innerHTML += '<div class="f-empty-add">' + g.label + ' 暂无安排<br><span style="font-size:12px">可添加单条提醒，或创建整日智能规划清单</span></div>';
+    }
+
+    box.innerHTML += '<div id="addform-future"></div>';
+    renderUpcomingStrip();
+  }
+  function upcomingDates() {
+    var today = todayISO();
+    return Object.keys(futureData).filter(function (iso) {
+      return iso > today && (futureData[iso].items.length > 0 || (futureData[iso].plan && futureData[iso].plan.length > 0));
+    }).sort();
+  }
+  function renderUpcomingStrip() {
+    var box = document.getElementById('upcomingStrip');
+    if (!box) return;
+    var dates = upcomingDates();
+    box.innerHTML = '';
+    if (!dates.length) {
+      box.innerHTML = '<span class="upcoming-empty">暂无未来排期，选中日期后添加安排</span>';
+      return;
+    }
+    dates.slice(0, 12).forEach(function (iso) {
+      var d = new Date(iso + 'T00:00:00');
+      var label = (d.getMonth() + 1) + '/' + d.getDate();
+      var on = iso === futureSelectedDate ? ' on' : '';
+      box.innerHTML += '<span class="upcoming-pill' + on + '" onclick="selectFutureQuick(\'' + iso + '\')">' + label + '</span>';
     });
+    if (dates.length > 12) {
+      box.innerHTML += '<span class="upcoming-empty">+' + (dates.length - 12) + ' 天</span>';
+    }
   }
-  function addFutureItem(key) {
-    var box = document.getElementById('addform-' + key);
-    box.innerHTML = '<div class="card" style="margin-top:10px">' +
-      '<input id="ft-title-' + key + '" placeholder="事项名称" style="width:100%;height:40px;padding:0 12px;border:1px solid var(--line);border-radius:10px;font-size:14px;outline:none">' +
-      '<div class="picker-row"><input type="time" id="ft-start-' + key + '" value="09:00">' +
-      '<span class="sep">提醒</span><input type="time" id="ft-remind-' + key + '" value="08:30"></div>' +
-      '<div class="form-actions"><span class="cancel" onclick="cancelAddFuture(\'' + key + '\')">取消</span>' +
-      '<span class="ok" onclick="confirmAddFuture(\'' + key + '\')">确定</span></div></div>';
+  function selectFutureQuick(iso) {
+    futureSelectedDate = iso;
+    applyFutureDate();
+    showToast('已定位到 ' + fmtFutureDate(iso), '');
   }
-  function cancelAddFuture(key) { document.getElementById('addform-' + key).innerHTML = ''; }
-  function confirmAddFuture(key) {
-    var title = document.getElementById('ft-title-' + key).value.trim();
+  function addFutureItem() {
+    if (!futureSelectedDate) return;
+    document.getElementById('addform-future').innerHTML =
+      '<div class="card" style="margin-top:10px">' +
+      '<input id="ft-title" placeholder="事项名称" style="width:100%;height:40px;padding:0 12px;border:1px solid var(--line);border-radius:10px;font-size:14px;outline:none">' +
+      '<div class="picker-row"><input type="time" id="ft-start" value="09:00">' +
+      '<span class="sep">提醒</span><input type="time" id="ft-remind" value="08:30"></div>' +
+      '<div class="form-actions"><span class="cancel" onclick="cancelAddFuture()">取消</span>' +
+      '<span class="ok" onclick="confirmAddFuture()">确定</span></div></div>';
+  }
+  function cancelAddFuture() { document.getElementById('addform-future').innerHTML = ''; }
+  function confirmAddFuture() {
+    var title = document.getElementById('ft-title').value.trim();
     if (!title) { showToast('请填写事项名称', ''); return; }
-    var start = document.getElementById('ft-start-' + key).value;
-    var remind = document.getElementById('ft-remind-' + key).value;
-    futureData[key].items.push({ title: title, start: start, dur: '自定义时长', end: '', important: false, remind: remind });
+    var start = document.getElementById('ft-start').value;
+    var remind = document.getElementById('ft-remind').value;
+    var g = ensureFutureGroup(futureSelectedDate);
+    g.items.push({ title: title, start: start, dur: '自定义时长', end: '', important: false, remind: remind });
     renderFuture();
-    showToast('已安排在 ' + futureData[key].label, '提醒 ' + remind);
+    showToast('已安排在 ' + g.label, '提醒 ' + remind);
+  }
+  function removeFutureItem(idx) {
+    var g = ensureFutureGroup(futureSelectedDate);
+    g.items.splice(idx, 1);
+    renderFuture();
   }
 
   /* ---------- 我的：通勤 ---------- */
@@ -1093,7 +1276,7 @@
   }
 
   /* ---------- 初始化 ---------- */
-  buildFutureData();
+  initFutureDate();
   renderWeekStrip();
   renderHomeHeader();
   renderRoutineBar();
@@ -1102,7 +1285,6 @@
   renderConfirm();
   renderTimeline();
   renderToday();
-  renderFuture();
 </script>
 </body>
 </html>
