@@ -82,13 +82,18 @@
   .stats .st .n { font-size: 20px; font-weight: 700; }
   .stats .st .l { font-size: 11px; opacity: .75; margin-top: 2px; }
 
-  .week-strip { display: flex; justify-content: space-between; margin-top: 14px; }
-  .week-strip .wd { flex: 1; text-align: center; padding: 8px 0; border-radius: 10px; cursor: pointer; }
+  .week-strip { display: flex; margin-top: 14px; overflow-x: auto; padding: 4px 2px 8px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .week-strip::-webkit-scrollbar { display: none; }
+  .week-strip .wd { flex: 0 0 auto; width: 54px; text-align: center; padding: 8px 0; margin-right: 6px; border-radius: 10px; cursor: pointer; }
   .week-strip .wd .d { font-size: 12px; color: var(--text-sub); }
   .week-strip .wd .n { font-size: 14px; font-weight: 600; color: var(--text); margin-top: 2px; }
   .week-strip .wd.sel { background: var(--green); }
   .week-strip .wd.sel .d, .week-strip .wd.sel .n { color: #fff; }
   .week-strip .wd.gold .n { color: var(--gold); }
+  .hd-item { display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .hd-item:last-child { border-bottom: none; }
+  .hd-time { flex-shrink: 0; width: 96px; font-size: 12px; font-weight: 600; color: var(--green); }
+  .hd-title { flex: 1; font-size: 13px; color: var(--text); word-break: break-all; }
 
   .routine-bar { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; padding: 14px 16px; border-radius: 14px; background: #fff; box-shadow: 0 4px 12px rgba(13,32,26,.04); }
   .routine-bar .t { font-size: 13px; color: var(--text-sub); }
@@ -276,6 +281,11 @@
     </div>
 
     <div class="week-strip" id="weekStrip"></div>
+
+    <div class="card" id="homeDayListWrap" style="margin-top:14px;display:none;padding:14px 16px">
+      <div class="f-sec-title" style="margin:0 0 4px"><span id="homeDayListTitle">当日时间轴</span></div>
+      <div id="homeDayList"></div>
+    </div>
 
     <div class="routine-bar">
       <div class="t" id="routineText"></div>
@@ -623,11 +633,28 @@
     if (greet) greet.textContent = greetByHour();
   }
 
+  var WEEK_BACK = 30;   // 向左可回看过去 30 天
+  var WEEK_FWD = 90;    // 向右可切到未来 90 天（可继续加大）
+
+  function isoOfDate(d) {
+    return d.getFullYear() + '-' + pad0(d.getMonth() + 1) + '-' + pad0(d.getDate());
+  }
+
   function selectHomeDay(offset) {
     var base = new Date();
     homeSelectedDate = new Date(base.getFullYear(), base.getMonth(), base.getDate() + offset);
     renderWeekStrip();
     renderHomeHeader();
+    renderHomeDayList();
+    scrollWeekTo(offset);
+  }
+
+  function scrollWeekTo(offset) {
+    var strip = document.getElementById('weekStrip');
+    var el = strip && strip.querySelector('.wd[data-off="' + offset + '"]');
+    if (el && el.scrollIntoView) {
+      try { el.scrollIntoView({ inline: 'center', block: 'nearest' }); } catch (e) { el.scrollIntoView(); }
+    }
   }
 
   function renderWeekStrip() {
@@ -636,14 +663,46 @@
     strip.innerHTML = '';
     var base = new Date();
     var selected = homeSelectedDate || base;
-    for (var i = -3; i <= 3; i++) {
+    for (var i = -WEEK_BACK; i <= WEEK_FWD; i++) {
       var d = new Date(base.getFullYear(), base.getMonth(), base.getDate() + i);
       var same = isSameDay(d, selected);
-      var label = i === 0 ? '今天' : WDAY_CN[d.getDay()];
       var weekend = d.getDay() === 0 || d.getDay() === 6;
       var cls = 'wd' + (same ? ' sel' : '') + (weekend ? ' gold' : '');
-      strip.innerHTML += '<div class="' + cls + '" onclick="selectHomeDay(' + i + ')"><div class="d">' + label + '</div><div class="n">' + d.getDate() + '</div></div>';
+      strip.innerHTML += '<div class="' + cls + '" data-off="' + i + '" onclick="selectHomeDay(' + i + ')"><div class="d">' + (i === 0 ? '今天' : (d.getMonth() + 1) + '/' + d.getDate()) + '</div><div class="n">' + WDAY_CN[d.getDay()] + '</div></div>';
     }
+  }
+
+  function renderHomeDayList() {
+    var wrap = document.getElementById('homeDayListWrap');
+    var list = document.getElementById('homeDayList');
+    var title = document.getElementById('homeDayListTitle');
+    if (!wrap || !list) return;
+    var sel = homeSelectedDate || new Date();
+    var today = new Date();
+    var selIso = isoOfDate(sel);
+    var items = null;
+
+    if (isSameDay(sel, today)) {
+      items = timelineData || [];
+    } else if (selIso > isoOfDate(today)) {
+      var g = futureData[selIso];
+      if (g) items = (g.plan && g.plan.length ? g.plan.slice() : []).concat(g.items || []);
+    }
+
+    wrap.style.display = 'block';
+    title.textContent = fmtHomeDate(sel) + ' · 时间轴';
+    if (!items || !items.length) {
+      list.innerHTML = '<div style="padding:16px 4px;color:#9AA3B2;font-size:13px;text-align:center">' + (selIso < isoOfDate(today) ? '历史日期暂无排期记录' : '这一天还没有排期') + '</div>';
+      return;
+    }
+    list.innerHTML = '';
+    items.forEach(function (t) {
+      var time = t.startTime || t.start || '';
+      var end = t.endTime || t.end || '';
+      var done = t.done ? ' style="opacity:.5;text-decoration:line-through"' : '';
+      var tag = t.isFixed ? ' <span class="tag fixed" style="margin-left:6px">固定</span>' : (t.isImportant ? ' <span class="tag important" style="margin-left:6px">重要</span>' : '');
+      list.innerHTML += '<div class="hd-item"' + done + '><span class="hd-time">' + (time || '待定') + (end ? '-' + end : '') + '</span><span class="hd-title">' + t.title + tag + '</span></div>';
+    });
   }
 
   /* ---------- 创建页 ---------- */
@@ -850,6 +909,7 @@
 
     if (targetDate === todayISO()) {
       timelineData = plan;
+      saveState();
       launchResult('timeline');
     } else {
       // 目标日期为未来 → 生成该日智能规划清单，绝不污染今日时间轴
@@ -860,6 +920,7 @@
       futureSelectedDate = targetDate;
       launchResult('future');
       applyFutureDate();
+      saveState();
       showToast('已生成 ' + group.label + ' 智能规划', '共 ' + group.plan.length + ' 项');
     }
   }
@@ -977,6 +1038,7 @@
   function checkoff(idx) {
     if (timelineData[idx].done) return;
     timelineData[idx].done = true;
+    saveState();
     renderToday();
     renderTimeline();
     showToast('已完成打卡', '后续未完成任务已自动顺延');
@@ -1086,6 +1148,7 @@
       showSplitSheet(plan);
     } else {
       timelineData = plan.result;
+      saveState();
       renderToday();
       renderTimeline();
       showToast('已按 ' + actual + ' 重排', '固定任务不变，自由任务已顺延');
@@ -1112,6 +1175,7 @@
 
   function acceptSplit() {
     if (pendingReplan) timelineData = pendingReplan.result;
+    saveState();
     pendingReplan = null;
     closeSplitSheet();
     renderToday();
@@ -1122,6 +1186,7 @@
   function rejectSplit() {
     var plan = planAfterStart(workState.actualStart || nowClock(), false);
     timelineData = plan.result;
+    saveState();
     pendingReplan = null;
     closeSplitSheet();
     renderToday();
@@ -1229,12 +1294,14 @@
     var remind = document.getElementById('ft-remind').value;
     var g = ensureFutureGroup(futureSelectedDate);
     g.items.push({ title: title, start: start, dur: '自定义时长', end: '', important: false, remind: remind });
+    saveState();
     renderFuture();
     showToast('已安排在 ' + g.label, '提醒 ' + remind);
   }
   function removeFutureItem(idx) {
     var g = ensureFutureGroup(futureSelectedDate);
     g.items.splice(idx, 1);
+    saveState();
     renderFuture();
   }
 
@@ -1275,9 +1342,34 @@
     t._timer = setTimeout(function () { t.style.display = 'none'; }, 1600);
   }
 
+  /* ---------- 持久化（退出/刷新不丢失） ---------- */
+  function saveState() {
+    try {
+      localStorage.setItem('lp_state_v1', JSON.stringify({
+        timelineData: timelineData,
+        futureData: futureData,
+        manualFixed: manualFixed,
+        routineProfile: routineProfile
+      }));
+    } catch (e) {}
+  }
+  function loadState() {
+    try {
+      var raw = localStorage.getItem('lp_state_v1');
+      if (!raw) return;
+      var s = JSON.parse(raw);
+      if (s.timelineData) timelineData = s.timelineData;
+      if (s.futureData) futureData = s.futureData;
+      if (s.manualFixed) manualFixed = s.manualFixed;
+      if (s.routineProfile) routineProfile = Object.assign({}, routineProfile, s.routineProfile);
+    } catch (e) {}
+  }
+
   /* ---------- 初始化 ---------- */
+  loadState();
   initFutureDate();
   renderWeekStrip();
+  scrollWeekTo(0);
   renderHomeHeader();
   renderRoutineBar();
   renderFixedList();
