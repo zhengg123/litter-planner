@@ -173,6 +173,10 @@
   .tl-card .ttl { flex: 1; font-size: 14px; font-weight: 600; word-break: break-all; }
   .check-btn { flex-shrink: 0; margin-left: 12px; padding: 5px 16px; border-radius: 12px; background: var(--green); color: #fff; font-size: 12px; cursor: pointer; }
   .check-done { flex-shrink: 0; margin-left: 12px; font-size: 11px; color: var(--green); }
+  .top-ops { display: flex; align-items: center; flex-shrink: 0; margin-left: 10px; }
+  .del-btn { flex-shrink: 0; margin-left: 10px; padding: 5px 12px; border-radius: 12px; font-size: 12px; color: var(--red); border: 1px solid #F0D0CB; cursor: pointer; }
+  .quick-add { margin-top: 12px; background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+  .qa-title { font-size: 13px; font-weight: 600; margin-bottom: 10px; color: var(--text); }
   .tl-card .meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 8px; font-size: 12px; color: var(--text-sub); }
   .empty { text-align: center; padding: 50px 20px; }
   .empty .ic { font-size: 42px; }
@@ -304,13 +308,13 @@
 
   <!-- 2. 创建事项 -->
   <div class="screen" id="screen-create">
-    <div class="intro"><b id="createIntro">把忙乱写下来</b><div class="s" id="createIntroSub">自由待办一条一行；有固定时间的会议单独添加</div></div>
+    <div class="intro"><b id="createIntro">把忙乱写下来</b><div class="s" id="createIntroSub"></div></div>
     <div class="card">
       <textarea id="taskInput" placeholder="例如：写周报、回复客户邮件、准备下午的汇报" oninput="syncLineCount()">回复客户邮件
 准备下午的汇报
 11:00-12:00写周报
 整理季度数据</textarea>
-      <div class="input-foot"><span id="lineCount">已写下 4 条</span><span>含固定时间自动识别</span></div>
+      <div class="input-foot"><span id="lineCount">已写下 4 条</span></div>
     </div>
 
     <div class="card" style="margin-top:14px">
@@ -383,7 +387,8 @@
     <div class="ws-done" id="workStartDone" style="display:none"></div>
 
     <div class="card" style="margin-top:14px;padding:8px 16px" id="todayList"></div>
-    <div class="btn-ghost" style="margin-top:18px" onclick="startTodayPlan()">＋ 继续添加今日事项</div>
+    <div class="btn-ghost" style="margin-top:18px" onclick="toggleQuickAdd()">＋ 继续添加今日事项</div>
+    <div id="quickAddBox"></div>
   </div>
 
   <!-- 6. 未来事项（日历自由选择） -->
@@ -933,7 +938,7 @@
     var dateInput = document.getElementById('targetDate');
     var lockTip = document.getElementById('dateLockTip');
     if (intro) intro.textContent = isFuture ? ('创建 ' + fmtFutureDate(lockedPlanDate) + ' 智能规划清单') : '把忙乱写下来';
-    if (sub) sub.textContent = isFuture ? '该日清单的日期已锁定 · 自由待办一条一行' : '自由待办一条一行；有固定时间的会议单独添加';
+    if (sub) sub.textContent = isFuture ? '该日清单的日期已锁定' : '';
     if (dateInput) { dateInput.disabled = isFuture; dateInput.value = isFuture ? lockedPlanDate : targetDate; }
     if (lockTip) lockTip.style.display = isFuture ? 'block' : 'none';
     var sb = document.getElementById('scheduleBtnText');
@@ -1007,6 +1012,7 @@
     var dotClass = 'dot' + (t.isFixed ? ' fixed' : '') + (t.isImportant ? ' imp' : '');
     var line = isLast ? '' : '<div class="line"></div>';
     var right = done ? '<span class="check-done">✓ 已完成</span>' : '<span class="check-btn" onclick="checkoff(' + idx + ')">打卡</span>';
+    var del = '<span class="del-btn" onclick="removeTodayTask(' + idx + ')">删除</span>';
     var s = (t.startTime && t.startTime !== '--' && t.startTime !== '--:--') ? t.startTime : '待排';
     var e = (t.endTime && t.endTime !== '--' && t.endTime !== '--:--') ? t.endTime : '待排';
     var meta = '<span>' + s + ' - ' + e + '</span>';
@@ -1016,7 +1022,7 @@
     return '<div class="tl-item">' +
       '<div class="tl-time"><span class="s">' + s + '</span><span class="e">' + e + '</span></div>' +
       '<div class="tl-rail"><span class="' + dotClass + '"></span>' + line + '</div>' +
-      '<div class="tl-card"><div class="top"><span class="ttl">' + t.title + '</span>' + right + '</div>' +
+      '<div class="tl-card"><div class="top"><span class="ttl">' + t.title + '</span><span class="top-ops">' + right + del + '</span></div>' +
       '<div class="meta">' + meta + '</div></div></div>';
   }
   function renderTimeline() {
@@ -1036,12 +1042,170 @@
   }
 
   function checkoff(idx) {
-    if (timelineData[idx].done) return;
-    timelineData[idx].done = true;
+    var t = timelineData[idx];
+    if (!t || t.done) return;
+    var nowMin = t2m(nowClock());
+    var plannedStart = timeVal(t.startTime);
+    if (plannedStart === null) plannedStart = nowMin;
+    var actualEnd = Math.max(nowMin, plannedStart);
+    var plannedEnd = timeVal(t.endTime);
+    if (plannedEnd === null) plannedEnd = plannedStart;
+    var delta = actualEnd - plannedEnd;
+
+    t.done = true;
+    t.endTime = m2t(actualEnd); // 记录实际结束时间
+
+    if (delta > 0) {
+      shiftPendingAfter(idx, delta, actualEnd);
+    }
     saveState();
     renderToday();
     renderTimeline();
-    showToast('已完成打卡', '后续未完成任务已自动顺延');
+    showToast('已完成打卡', delta > 0 ? ('实际结束 ' + m2t(actualEnd) + '，后续顺延 ' + delta + ' 分钟') : '已完成并按计划推进');
+  }
+
+  function timeVal(v) {
+    return (v && v !== '--' && v !== '--:--') ? t2m(v) : null;
+  }
+
+  // 打卡晚点后，把后续未完成的自由任务整体顺延 delta 分钟，避开固定任务，不越过 23:59
+  function shiftPendingAfter(afterIdx, delta, lowerBound) {
+    var fixed = [];
+    timelineData.forEach(function (task, i) {
+      if (i > afterIdx && task.isFixed && !task.done) {
+        var fs = timeVal(task.startTime);
+        var fe = timeVal(task.endTime);
+        if (fs !== null && fe !== null) fixed.push({ s: fs, e: fe });
+      }
+    });
+    var lower = lowerBound;
+    timelineData.forEach(function (task, i) {
+      if (i <= afterIdx || task.done || task.isFixed) return;
+      var ts = timeVal(task.startTime);
+      var te = timeVal(task.endTime);
+      if (ts === null || te === null) return;
+      var dur = Math.max(1, te - ts);
+      var ns = ts + delta;
+      var ne = te + delta;
+      if (ns < lower) { ne += lower - ns; ns = lower; }
+      var changed = true;
+      var guard = 0;
+      while (changed && guard < fixed.length + 1) {
+        changed = false;
+        for (var j = 0; j < fixed.length; j++) {
+          var iv = fixed[j];
+          if (ns < iv.e && ne > iv.s) { ns = iv.e; ne = ns + dur; changed = true; }
+        }
+        guard++;
+      }
+      if (ne > 1439) { ne = 1439; ns = Math.min(ns, ne - 1); }
+      task.startTime = m2t(ns);
+      task.endTime = m2t(ne);
+      lower = ne;
+    });
+  }
+
+  // 删除任务后，把后续未完成的自由任务前移填补空档；已打卡与固定任务绝不移动
+  function removeTodayTask(idx) {
+    var t = timelineData[idx];
+    if (!t) return;
+    if (!confirm('确定删除「' + t.title + '」？删除后其余任务会自动前移。')) return;
+    var nowMin = t2m(nowClock());
+    var prevEnd = idx > 0 ? timeVal(timelineData[idx - 1].endTime) : null;
+    var anchor = prevEnd !== null ? Math.max(prevEnd, nowMin) : nowMin;
+    timelineData.splice(idx, 1);
+    compactAfter(idx - 1, anchor);
+    saveState();
+    renderToday();
+    renderTimeline();
+    showToast('已删除', '后续未完成任务已自动前移');
+  }
+
+  function compactAfter(afterIdx, lowerBound) {
+    var fixed = [];
+    timelineData.forEach(function (task, i) {
+      if (i > afterIdx && task.isFixed && !task.done) {
+        var fs = timeVal(task.startTime);
+        var fe = timeVal(task.endTime);
+        if (fs !== null && fe !== null) fixed.push({ s: fs, e: fe });
+      }
+    });
+    var lower = lowerBound;
+    timelineData.forEach(function (task, i) {
+      if (i <= afterIdx) return;
+      if (task.done || task.isFixed) {
+        var te = timeVal(task.endTime);
+        if (te !== null) lower = Math.max(lower, te);
+        return;
+      }
+      var ts = timeVal(task.startTime);
+      var te = timeVal(task.endTime);
+      if (ts === null || te === null) return;
+      var dur = Math.max(1, te - ts);
+      var ns = lower;
+      var ne = ns + dur;
+      var changed = true;
+      var guard = 0;
+      while (changed && guard < fixed.length + 1) {
+        changed = false;
+        for (var j = 0; j < fixed.length; j++) {
+          var iv = fixed[j];
+          if (ns < iv.e && ne > iv.s) { ns = iv.e; ne = ns + dur; changed = true; }
+        }
+        guard++;
+      }
+      if (ne > 1439) { ne = 1439; ns = Math.min(ns, ne - 1); }
+      task.startTime = m2t(ns);
+      task.endTime = m2t(ne);
+      lower = ne;
+    });
+  }
+
+  /* ---------- 今日事项原地快捷添加 ---------- */
+  function toggleQuickAdd() {
+    var box = document.getElementById('quickAddBox');
+    if (!box) return;
+    if (box.innerHTML) { box.innerHTML = ''; return; }
+    box.innerHTML =
+      '<div class="quick-add">' +
+      '<div class="qa-title">快速添加今日事项</div>' +
+      '<input id="qa-title" placeholder="事项名称，如：临时加个方案评审" style="width:100%;height:40px;padding:0 12px;border:1px solid var(--line);border-radius:10px;font-size:14px;outline:none">' +
+      '<div class="picker-row"><input type="number" id="qa-min" value="30" min="5" step="5"><span class="sep">分钟</span></div>' +
+      '<div class="form-actions"><span class="cancel" onclick="toggleQuickAdd()">取消</span><span class="ok" onclick="confirmQuickAdd()">确定</span></div>' +
+      '</div>';
+  }
+
+  function confirmQuickAdd() {
+    var title = document.getElementById('qa-title').value.trim();
+    var min = parseInt(document.getElementById('qa-min').value, 10) || 30;
+    if (!title) { showToast('请填写事项名称', ''); return; }
+    if (min < 5) min = 5;
+    var nowMin = t2m(nowClock());
+    var startMin = nowMin;
+    timelineData.forEach(function (t) {
+      if (!t.done && t.endTime && t.endTime !== '--' && t.endTime !== '--:--') {
+        var em = t2m(t.endTime);
+        if (em > startMin) startMin = em;
+      }
+    });
+    var endMin = Math.min(1439, startMin + min);
+    if (endMin <= startMin) { showToast('今日剩余时间不足', ''); return; }
+    timelineData.push({ title: title, startTime: m2t(startMin), endTime: m2t(endMin), minutes: min, isFixed: false, isImportant: false, done: false });
+    sortTimeline();
+    saveState();
+    renderToday();
+    renderTimeline();
+    var box = document.getElementById('quickAddBox');
+    if (box) box.innerHTML = '';
+    showToast('已添加「' + title + '」', m2t(startMin) + ' - ' + m2t(endMin));
+  }
+
+  function sortTimeline() {
+    timelineData.sort(function (a, b) {
+      var sa = (a.startTime && a.startTime !== '--' && a.startTime !== '--:--') ? t2m(a.startTime) : 9999;
+      var sb = (b.startTime && b.startTime !== '--' && b.startTime !== '--:--') ? t2m(b.startTime) : 9999;
+      return sa - sb;
+    });
   }
 
   /* ---------- 开工打卡 + 动态重排 + 拆分 ---------- */
