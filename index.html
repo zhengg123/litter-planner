@@ -310,11 +310,8 @@
   <div class="screen" id="screen-create">
     <div class="intro"><b id="createIntro">把忙乱写下来</b><div class="s" id="createIntroSub"></div></div>
     <div class="card">
-      <textarea id="taskInput" placeholder="例如：写周报、回复客户邮件、准备下午的汇报" oninput="syncLineCount()">回复客户邮件
-准备下午的汇报
-11:00-12:00写周报
-整理季度数据</textarea>
-      <div class="input-foot"><span id="lineCount">已写下 4 条</span></div>
+      <textarea id="taskInput" placeholder="例：准备会议报告" oninput="syncLineCount()"></textarea>
+      <div class="input-foot"><span id="lineCount">已写下 0 条</span></div>
     </div>
 
     <div class="card" style="margin-top:14px">
@@ -489,13 +486,7 @@
     { title: '整理季度数据', minutes: 45 }
   ];
 
-  var timelineData = [
-    { title: '回复客户邮件', startTime: '08:00', endTime: '08:20', minutes: 20, isFixed: false, isImportant: false, done: false },
-    { title: '整理季度数据', startTime: '08:25', endTime: '09:10', minutes: 45, isFixed: false, isImportant: false, done: false },
-    { title: '部门周会', startTime: '10:00', endTime: '11:00', minutes: 60, isFixed: true, isImportant: true, done: false },
-    { title: '准备明天汇报', startTime: '13:00', endTime: '14:00', minutes: 60, isFixed: false, isImportant: false, done: false },
-    { title: '写季度总结报告', startTime: '15:00', endTime: '18:00', minutes: 180, isFixed: false, isImportant: true, done: false }
-  ];
+  var timelineData = [];
 
   var manualFixed = [];
 
@@ -951,6 +942,10 @@
     planMode = 'today';
     lockedPlanDate = '';
     targetDate = todayISO();
+    document.getElementById('taskInput').value = '';
+    manualFixed.length = 0;
+    renderFixedList();
+    syncLineCount();
     applyCreateMode();
     goto('create');
   }
@@ -1033,6 +1028,11 @@
   function renderToday() {
     var list = document.getElementById('todayList');
     list.innerHTML = '';
+    if (timelineData.length === 0) {
+      list.innerHTML = '<div class="empty"><div class="t">今日暂无安排</div><div style="margin-top:8px;font-size:12px;color:var(--text-mute)">点击下方"+ 继续添加今日事项"，或去首页创建一份智能规划清单</div></div>';
+      document.getElementById('todayProgress').textContent = '暂无安排';
+      return;
+    }
     var done = 0;
     timelineData.forEach(function (t, i) {
       list.innerHTML += tlItemHTML(t, i === timelineData.length - 1, t.done, i);
